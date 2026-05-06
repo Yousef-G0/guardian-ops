@@ -1,0 +1,246 @@
+name: Emergency Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Reason for rollback'
+        required: true
+        type: string
+      timestamp:
+        description: 'Timestamp of incident'
+        required: true
+        type: string
+      severity:
+        description: 'Severity level'
+        required: true
+        type: choice
+        options:
+          - critical
+          - high
+          - medium
+        default: 'critical'
+
+jobs:
+  rollback:
+    name: Emergency Rollback
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+    
+    steps:
+      - name: Alert - Rollback Initiated
+        run: |
+          echo "::error::EMERGENCY ROLLBACK INITIATED"
+          echo "::error::Reason: ${{ inputs.reason }}"
+          echo "::error::Timestamp: ${{ inputs.timestamp }}"
+          echo "::error::Severity: ${{ inputs.severity }}"
+
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 10  # Get recent commits for rollback
+
+      - name: Find Last Stable Deployment
+        id: find_stable
+        run: |
+          echo "Searching for last stable deployment..."
+          
+          # In production, you would:
+          # 1. Query deployment database/logs
+          # 2. Find last commit that passed security scan
+          # 3. Verify it's still deployable
+          
+          # For MVP, rollback to previous commit
+          CURRENT_COMMIT=$(git rev-parse HEAD)
+          PREVIOUS_COMMIT=$(git rev-parse HEAD~1)
+          
+          echo "current_commit=$CURRENT_COMMIT" >> $GITHUB_OUTPUT
+          echo "rollback_commit=$PREVIOUS_COMMIT" >> $GITHUB_OUTPUT
+          
+          echo "Current: $CURRENT_COMMIT"
+          echo "Rolling back to: $PREVIOUS_COMMIT"
+
+      - name: Verify Rollback Target
+        run: |
+          git checkout ${{ steps.find_stable.outputs.rollback_commit }}
+          
+          echo "Rollback target commit details:"
+          git show --stat ${{ steps.find_stable.outputs.rollback_commit }}
+
+      - name: Build Rollback Version
+        run: |
+          echo "Building rollback version..."
+          # Add your build commands here
+          # This should be the same as your normal build process
+
+      - name: 🧪 Quick Smoke Test
+        run: |
+          echo "Running smoke tests on rollback version..."
+          # Add minimal tests to ensure rollback version works
+
+      - name: Deploy Rollback
+        run: |
+          echo "Deploying rollback version..."
+          
+          # Add your deployment commands here
+          # Examples:
+          # - SSH to server
+          # - Stop current version
+          # - Deploy rollback version
+          # - Restart services
+          
+          echo "Rollback deployment complete"
+
+      - name: Verify Rollback Success
+        run: |
+          echo "Verifying rollback deployment..."
+          
+          # Health checks
+          # - Check if application responds
+          # - Verify no anomalies
+          # - Check logs
+          
+          echo "Rollback verification complete"
+
+      - name: Log Incident
+        run: |
+          mkdir -p incidents
+          
+          cat > incidents/incident-$(date +%Y%m%d-%H%M%S).json << EOF
+          {
+            "timestamp": "${{ inputs.timestamp }}",
+            "reason": "${{ inputs.reason }}",
+            "severity": "${{ inputs.severity }}",
+            "rollback_from": "${{ steps.find_stable.outputs.current_commit }}",
+            "rollback_to": "${{ steps.find_stable.outputs.rollback_commit }}",
+            "triggered_by": "${{ github.actor }}",
+            "workflow_run": "${{ github.run_id }}"
+          }
+          EOF
+          
+          cat incidents/incident-*.json
+
+      - name: Send Alert Notifications
+        if: always()
+        run: |
+          cat > rollback-alert.md << 'EOF'
+          # EMERGENCY ROLLBACK EXECUTED
+          
+          ## Incident Details
+          - **Reason:** ${{ inputs.reason }}
+          - **Severity:** ${{ inputs.severity }}
+          - **Timestamp:** ${{ inputs.timestamp }}
+          
+          ## Rollback Information
+          - **From Commit:** ${{ steps.find_stable.outputs.current_commit }}
+          - **To Commit:** ${{ steps.find_stable.outputs.rollback_commit }}
+          - **Executed By:** ${{ github.actor }}
+          - **Workflow Run:** ${{ github.run_id }}
+          
+          ## Status
+          - **Rollback Status:** ${{ job.status }}
+          
+          ## Next Steps
+          1. Investigate root cause
+          2. Review security logs
+          3. Fix vulnerability
+          4. Re-deploy after security scan passes
+          EOF
+          
+          cat rollback-alert.md
+
+      - name: Create Incident Issue
+        uses: actions/github-script@v7
+        if: always()
+        with:
+          script: |
+            const fs = require('fs');
+            const alert = fs.readFileSync('rollback-alert.md', 'utf8');
+            
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Emergency Rollback - ${new Date().toISOString()}`,
+              body: alert,
+              labels: ['security', 'incident', 'rollback']
+            });
+
+      - name: Update Deployment Summary
+        if: always()
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+          # Emergency Rollback Summary
+          
+          ## Status: ${{ job.status }}
+          
+          ### Incident
+          - **Reason:** ${{ inputs.reason }}
+          - **Severity:** ${{ inputs.severity }}
+          - **Detected:** ${{ inputs.timestamp }}
+          
+          ### Rollback
+          - **From:** `${{ steps.find_stable.outputs.current_commit }}`
+          - **To:** `${{ steps.find_stable.outputs.rollback_commit }}`
+          - **Executed:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          
+          ### Actions Taken
+          - Previous stable version deployed
+          - Incident logged
+          - Issue created for investigation
+          - Alert notifications sent
+          
+          ### Next Steps
+          1. Review incident logs
+          2. Investigate root cause
+          3. Apply security fixes
+          4. Run security scan before re-deployment
+          EOF
+
+  post_rollback_scan:
+    name: Post-Rollback Verification
+    runs-on: ubuntu-latest
+    needs: rollback
+    if: always()
+    
+    steps:
+      - name: Checkout Rollback Version
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Verify Rollback Security
+        run: |
+          echo "Running security scan on rollback version..."
+          
+          # Start security API
+          cd cmd/api
+          go build -o ../../security-api main.go
+          cd ../..
+          ./security-api &
+          sleep 5
+          
+          # Scan rollback version
+          SCAN_RESULT=$(curl -s -X POST http://localhost:8080/scan \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"repo_path\": \"$GITHUB_WORKSPACE\",
+              \"branch\": \"rollback-verification\",
+              \"commit_hash\": \"$GITHUB_SHA\"
+            }")
+          
+          echo "$SCAN_RESULT" | jq '.'
+          
+          PASSED=$(echo "$SCAN_RESULT" | jq -r '.passed')
+          RISK_SCORE=$(echo "$SCAN_RESULT" | jq -r '.risk_score')
+          
+          if [ "$PASSED" == "true" ]; then
+            echo "Rollback version passed security scan"
+            echo "Risk score: $RISK_SCORE/100"
+          else
+            echo "::warning::Rollback version has security issues (Score: $RISK_SCORE)"
+            echo "::warning::Further investigation required"
+          fi

@@ -1,0 +1,296 @@
+name: Security Scan & Deploy
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  SECURITY_API_URL: http://localhost:8080
+  DEPLOY_TARGET: localhost
+  
+jobs:
+  security-scan:
+    name: Security Analysis
+    runs-on: ubuntu-latest
+    outputs:
+      scan-passed: ${{ steps.scan.outputs.passed }}
+      risk-score: ${{ steps.scan.outputs.risk_score }}
+      risk-level: ${{ steps.scan.outputs.risk_level }}
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for better analysis
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Start Security API
+        run: |
+          cd cmd/api
+          go mod download
+          go build -o ../../security-api main.go
+          cd ../..
+          ./security-api &
+          sleep 5
+          curl http://localhost:8080/health || echo "API not ready"
+
+      - name: Run Security Scan
+        id: scan
+        run: |
+          SCAN_RESULT=$(curl -s -X POST http://localhost:8080/scan \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"repo_path\": \"$GITHUB_WORKSPACE\",
+              \"branch\": \"$GITHUB_REF_NAME\",
+              \"commit_hash\": \"$GITHUB_SHA\"
+            }")
+          
+          echo "Scan Result:"
+          echo "$SCAN_RESULT" | jq '.'
+          
+          # Extract results
+          PASSED=$(echo "$SCAN_RESULT" | jq -r '.passed')
+          RISK_SCORE=$(echo "$SCAN_RESULT" | jq -r '.risk_score')
+          RISK_LEVEL=$(echo "$SCAN_RESULT" | jq -r '.risk_level')
+          SUMMARY=$(echo "$SCAN_RESULT" | jq -r '.summary')
+          
+          echo "passed=$PASSED" >> $GITHUB_OUTPUT
+          echo "risk_score=$RISK_SCORE" >> $GITHUB_OUTPUT
+          echo "risk_level=$RISK_LEVEL" >> $GITHUB_OUTPUT
+          echo "summary=$SUMMARY" >> $GITHUB_OUTPUT
+          
+          # Save full report
+          echo "$SCAN_RESULT" > scan-report.json
+
+      - name: Generate Security Report
+        if: always()
+        run: |
+          cat > security-report.md << 'EOF'
+          # Security Scan Report
+          
+          **Repository:** ${{ github.repository }}
+          **Branch:** ${{ github.ref_name }}
+          **Commit:** ${{ github.sha }}
+          **Timestamp:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          
+          ## Summary
+          - **Risk Score:** ${{ steps.scan.outputs.risk_score }}/100
+          - **Risk Level:** ${{ steps.scan.outputs.risk_level }}
+          - **Status:** ${{ steps.scan.outputs.passed == 'true' && 'PASSED' || 'BLOCKED' }}
+          
+          ## Findings
+          EOF
+          
+          # Parse findings from scan-report.json
+          if [ -f scan-report.json ]; then
+            SECRETS=$(jq -r '.secrets | length' scan-report.json)
+            CVES=$(jq -r '.cves | length' scan-report.json)
+            CODE_ISSUES=$(jq -r '.code_issues | length' scan-report.json)
+            
+            cat >> security-report.md << EOF
+          
+          ### Secrets Detected: $SECRETS
+          $(jq -r '.secrets[] | "- **\(.type)** in `\(.file):\(.line)` - Severity: \(.severity)"' scan-report.json)
+          
+          ### CVE Vulnerabilities: $CVES
+          $(jq -r '.cves[] | "- **\(.cve)** in \(.package) - CVSS: \(.cvss) - \(.severity)"' scan-report.json)
+          
+          ### Code Issues: $CODE_ISSUES
+          $(jq -r '.code_issues[] | "- **\(.type)** in `\(.file):\(.line)` - \(.severity)"' scan-report.json)
+          
+          ### Policy Violations
+          $(jq -r '.policy_result.violations[] | "- \(.)"' scan-report.json)
+          
+          ### Warnings
+          $(jq -r '.policy_result.warnings[] | "- \(.)"' scan-report.json)
+          EOF
+          fi
+          
+          cat security-report.md
+
+      - name: Upload Security Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-scan-report
+          path: |
+            scan-report.json
+            security-report.md
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const report = fs.readFileSync('security-report.md', 'utf8');
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: report
+            });
+
+      - name: Fail if Security Check Failed
+        if: steps.scan.outputs.passed != 'true'
+        run: |
+          echo "::error::Security scan failed. Risk level: ${{ steps.scan.outputs.risk_level }}"
+          echo "::error::Risk score: ${{ steps.scan.outputs.risk_score }}/100"
+          echo "::error::Deployment BLOCKED due to security violations"
+          exit 1
+
+  build:
+    name:  Build Application
+    runs-on: ubuntu-latest
+    needs: security-scan
+    if: needs.security-scan.outputs.scan-passed == 'true'
+    
+    steps:
+      - name:  Checkout Code
+        uses: actions/checkout@v4
+
+      - name:  Setup Build Environment
+        run: |
+          echo "Setting up build environment..."
+          # Add your build setup here (Node.js, Python, Go, etc.)
+
+      - name:  Build Application
+        run: |
+          echo "Building application..."
+          # Add your build commands here
+          # Examples:
+          # npm install && npm run build
+          # go build -o app main.go
+          # docker build -t myapp .
+
+      - name:  Run Tests
+        run: |
+          echo "Running tests..."
+          # Add your test commands here
+
+      - name:  Package Artifacts
+        run: |
+          mkdir -p artifacts
+          # Copy build artifacts
+          echo "Packaging complete"
+
+      - name:  Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          path: artifacts/
+
+  deploy:
+    name:  Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [security-scan, build]
+    if: |
+      needs.security-scan.outputs.scan-passed == 'true' &&
+      github.ref == 'refs/heads/main' &&
+      github.event_name == 'push'
+    environment:
+      name: production
+      url: http://localhost:3000
+    
+    steps:
+      - name:  Checkout Code
+        uses: actions/checkout@v4
+
+      - name:  Download Build Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts
+          path: artifacts/
+
+      - name:  Deploy Application
+        run: |
+          echo "Deploying to production..."
+          # Add deployment logic here
+          # Examples:
+          # - SSH to server and copy files
+          # - Update Docker containers
+          # - Deploy to k3s
+          # - Use deployment tools (ansible, terraform, etc.)
+          
+          echo " Deployment complete"
+
+      - name:  Record Deployment
+        run: |
+          echo "Recording deployment metadata..."
+          cat > deployment-info.json << EOF
+          {
+            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "commit": "${{ github.sha }}",
+            "branch": "${{ github.ref_name }}",
+            "risk_score": "${{ needs.security-scan.outputs.risk-score }}",
+            "risk_level": "${{ needs.security-scan.outputs.risk-level }}",
+            "deployed_by": "${{ github.actor }}"
+          }
+          EOF
+          cat deployment-info.json
+
+      - name:  Start Runtime Monitoring
+        run: |
+          echo "Starting runtime monitoring agent..."
+          # In production, you would:
+          # 1. SSH to target server
+          # 2. Start the runtime agent with environment variables
+          # 3. Configure monitoring parameters
+          
+          echo "GITHUB_REPO=${{ github.repository }}" > .env
+          echo "GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}" >> .env
+          echo "MONITORED_PROCESS=your-app-process" >> .env
+          echo "CHECK_INTERVAL=30" >> .env
+          
+          echo " Runtime agent configured"
+
+  notify:
+    name:  Send Notifications
+    runs-on: ubuntu-latest
+    needs: [security-scan, deploy]
+    if: always()
+    
+    steps:
+      - name:  Deployment Status
+        run: |
+          if [ "${{ needs.security-scan.outputs.scan-passed }}" == "true" ] && \
+             [ "${{ needs.deploy.result }}" == "success" ]; then
+            echo "status=success" >> $GITHUB_ENV
+            echo "message= Deployment successful" >> $GITHUB_ENV
+            echo "color=28a745" >> $GITHUB_ENV
+          elif [ "${{ needs.security-scan.outputs.scan-passed }}" != "true" ]; then
+            echo "status=blocked" >> $GITHUB_ENV
+            echo "message= Deployment blocked by security scan" >> $GITHUB_ENV
+            echo "color=dc3545" >> $GITHUB_ENV
+          else
+            echo "status=failed" >> $GITHUB_ENV
+            echo "message= Deployment failed" >> $GITHUB_ENV
+            echo "color=dc3545" >> $GITHUB_ENV
+          fi
+
+      - name:  Create Deployment Summary
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          #  Guardian-Ops - Deployment Summary
+          
+          ## Status: ${{ env.message }}
+          
+          **Risk Score:** ${{ needs.security-scan.outputs.risk-score }}/100
+          **Risk Level:** ${{ needs.security-scan.outputs.risk-level }}
+          **Security Check:** ${{ needs.security-scan.outputs.scan-passed == 'true' && '✅ Passed' || '❌ Failed' }}
+          **Deployment:** ${{ needs.deploy.result || 'Skipped' }}
+          
+          **Repository:** ${{ github.repository }}
+          **Branch:** ${{ github.ref_name }}
+          **Commit:** ${{ github.sha }}
+          **Triggered by:** ${{ github.actor }}
+          **Timestamp:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          EOF

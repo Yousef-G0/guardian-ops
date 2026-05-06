@@ -1,0 +1,46 @@
+# Binaries
+/bin/
+
+# Build outputs
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+
+# Go workspace files
+*.log
+*.out
+
+# Dependency directories
+vendor/
+
+# Environment files
+.env
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE/editor files
+.vscode/
+.idea/
+*.swp
+*~
+
+# Docker
+docker-compose.override.yml
+
+# Misc
+*.pid
+*.seed
+*.backup
+
+# Temporary files
+tmp/
+*.tmp
+
+# GitHub Actions / report artifacts
+*.json
+*.log

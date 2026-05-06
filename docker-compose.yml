@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  security-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: devsecops-api
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./:/workspace:ro  # Mount repo for scanning
+    environment:
+      - GIN_MODE=release
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  runtime-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    container_name: devsecops-agent
+    environment:
+      - MONITORED_PROCESS=your-app
+      - CHECK_INTERVAL=30
+      - GITHUB_REPO=${GITHUB_REPO}
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+    volumes:
+      - /var/log/guardian-ops:/var/log/guardian-ops
+    network_mode: host  # Required for monitoring host processes
+    privileged: true    # Required for system monitoring
+    restart: unless-stopped
+
+networks:
+  default:
+    name: devsecops-network

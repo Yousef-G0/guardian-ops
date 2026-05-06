@@ -1,0 +1,122 @@
+name: Security Scan (Self-Hosted)
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  security-scan:
+    runs-on: self-hosted
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Setup Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+
+    - name: Cache Go modules
+      uses: actions/cache@v3
+      with:
+        path: ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+
+    - name: Build Security API
+      run: |
+        cd cmd/api
+        go build -o ../../bin/security-api main.go
+
+    - name: Start Security API
+      run: |
+        ./bin/security-api &
+        sleep 5
+
+    - name: Run Security Scan
+      id: scan
+      run: |
+        SCAN_RESULT=$(curl -s -X POST http://localhost:8080/scan \
+          -H "Content-Type: application/json" \
+          -d '{
+            "repo_path": ".",
+            "branch": "'${{ github.head_ref || github.ref_name }}'",
+            "commit_hash": "'${{ github.sha }}'"
+          }')
+
+        echo "scan_result=$SCAN_RESULT" >> $GITHUB_OUTPUT
+
+        # Extract pass/fail status
+        PASSED=$(echo $SCAN_RESULT | jq -r '.passed')
+        echo "passed=$PASSED" >> $GITHUB_OUTPUT
+
+        RISK_SCORE=$(echo $SCAN_RESULT | jq -r '.risk_score')
+        echo "risk_score=$RISK_SCORE" >> $GITHUB_OUTPUT
+
+    - name: Generate Security Report
+      if: always()
+      run: |
+        echo "${{ steps.scan.outputs.scan_result }}" | jq '.' > scan-report.json
+
+        SECRETS=$(jq '.secrets | length' scan-report.json)
+        CVES=$(jq '.cves | length' scan-report.json)
+        CODE_ISSUES=$(jq '.code_issues | length' scan-report.json)
+
+        cat > security-report.md << 'EOF'
+        # Security Scan Report
+
+        **Repository:** ${{ github.repository }}
+        **Branch:** ${{ github.head_ref || github.ref_name }}
+        **Commit:** ${{ github.sha }}
+        **Status:** ${{ steps.scan.outputs.passed == 'true' && 'PASSED' || 'BLOCKED' }}
+        **Risk Score:** ${{ steps.scan.outputs.risk_score }}/100
+
+        ## Findings
+
+        ### Secrets Detected: $SECRETS
+        $(jq -r '.secrets[] | "- **\(.type)** in `\(.file):\(.line)` - Severity: \(.severity)"' scan-report.json)
+
+        ### CVE Vulnerabilities: $CVES
+        $(jq -r '.cves[] | "- **\(.cve)** in \(.package) - CVSS: \(.cvss) - \(.severity)"' scan-report.json)
+
+        ### Code Issues: $CODE_ISSUES
+        $(jq -r '.code_issues[] | "- **\(.type)** in `\(.file):\(.line)` - \(.severity)"' scan-report.json)
+
+        ### Policy Violations
+        $(jq -r '.policy_result.violations[] | "- \(.)"' scan-report.json)
+
+        ### Warnings
+        $(jq -r '.policy_result.warnings[] | "- \(.)"' scan-report.json)
+        EOF
+
+    - name: Upload Security Report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: security-report
+        path: security-report.json
+
+    - name: Comment on PR
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const report = fs.readFileSync('security-report.md', 'utf8');
+
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: report
+          });
+
+    - name: Fail if Security Check Failed
+      if: steps.scan.outputs.passed != 'true'
+      run: |
+        echo "Security scan failed!"
+        exit 1
