@@ -121,6 +121,10 @@ SECURITY_API_URL=http://localhost:8080
 - `policies/` — security rules
 - `docker-compose.yml` — local run setup
 
+##  Contributions
+
+Contribute at - [CONTRIBUTION](CONTRIBUTING.md)
+
 ##  License
 
 MIT License — see [LICENSE](LICENSE)
