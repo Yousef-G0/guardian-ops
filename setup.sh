@@ -42,12 +42,15 @@ else
     echo -e "${YELLOW}⚠${NC}  Docker not found. Install with: curl -fsSL https://get.docker.com | sh"
 fi
 
-# Check jq
-if command -v jq &> /dev/null; then
-    echo -e "${GREEN}✓${NC} jq installed"
+# Check Rust (for advanced features)
+if command -v cargo &> /dev/null; then
+    RUST_VERSION=$(cargo --version | awk '{print $2}')
+    echo -e "${GREEN}✓${NC} Rust installed: $RUST_VERSION"
+    RUST_AVAILABLE=true
 else
-    echo -e "${YELLOW}⚠${NC}  jq not found. Installing..."
-    sudo apt-get update && sudo apt-get install -y jq
+    echo -e "${YELLOW}⚠${NC}  Rust not found. Advanced features will be unavailable."
+    echo -e "${YELLOW}   Install with: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh${NC}"
+    RUST_AVAILABLE=false
 fi
 
 # Build Go applications
@@ -60,6 +63,27 @@ go mod download
 go build -o ../../bin/security-api main.go
 cd ../..
 echo -e "${GREEN}✓${NC} Security API built: ./bin/security-api"
+
+# Build advanced version if Rust is available
+if [ "$RUST_AVAILABLE" = true ]; then
+    echo ""
+    echo "  → Building Advanced Security API (Rust integration)..."
+    echo "    Building Rust security analyzer..."
+    cd rust-security-analyzer
+    cargo build --release
+    echo "    Rust library built successfully"
+    cd ..
+
+    echo "    Building Go API with Rust FFI integration..."
+    export CGO_LDFLAGS="-L$(pwd)/rust-security-analyzer/target/release -lsecurity_analyzer -ldl"
+    cd cmd/api
+    go build -o ../../bin/security-api-advanced main.go
+    cd ../..
+    echo -e "${GREEN}✓${NC} Advanced Security API built: ./bin/security-api-advanced"
+    echo -e "${GREEN}✓${NC} Advanced features available: AST-based analysis, multi-language support"
+else
+    echo -e "${YELLOW}⚠${NC}  Skipping advanced build (Rust not available)"
+fi
 
 echo "  → Building Runtime Agent..."
 cd cmd/agent
@@ -175,10 +199,22 @@ echo "======================================"
 echo -e "${GREEN} Setup Complete!${NC}"
 echo "======================================"
 echo ""
+echo "Available binaries:"
+echo "  ./bin/security-api              # Basic security API"
+if [ "$RUST_AVAILABLE" = true ]; then
+    echo "  ./bin/security-api-advanced     # Advanced API with Rust AST analysis"
+fi
+echo "  ./bin/runtime-agent             # Runtime monitoring agent"
+echo ""
 echo "Next steps:"
 echo "1. Edit .env and configure your GitHub token"
 echo "2. Start the Security API:"
-echo "   ./bin/security-api"
+if [ "$RUST_AVAILABLE" = true ]; then
+    echo "   ./bin/security-api              # Basic version"
+    echo "   ./bin/security-api-advanced     # Advanced version (recommended)"
+else
+    echo "   ./bin/security-api"
+fi
 echo ""
 echo "3. Start the Runtime Agent:"
 echo "   sudo ./bin/runtime-agent"
@@ -191,4 +227,18 @@ echo "   - Push this repo to GitHub"
 echo "   - The workflows in .github/workflows/ will activate"
 echo "   - Add GITHUB_TOKEN secret if using self-hosted runner"
 echo ""
+if [ "$RUST_AVAILABLE" = true ]; then
+    echo "Advanced Features Available:"
+    echo "• AST-based security analysis for Rust, Go, Python, JavaScript"
+    echo "• Advanced vulnerability detection beyond regex patterns"
+    echo "• Data flow analysis for injection vulnerabilities"
+    echo "• Cryptographic weakness detection"
+    echo "• Parallel processing with Rayon"
+    echo ""
+    echo "Use the /advanced-scan endpoint for deep analysis:"
+    echo "  curl -X POST http://localhost:8080/advanced-scan \\"
+    echo "       -H 'Content-Type: application/json' \\"
+    echo "       -d '{\"repo_path\": \"/path/to/code\"}'"
+    echo ""
+fi
 echo "For more information, see README.md"
