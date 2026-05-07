@@ -4,6 +4,7 @@ import (
 	"container/list"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"log"
 	"math"
@@ -13,9 +14,16 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unsafe"
 
 	"github.com/gin-gonic/gin"
 )
+
+// #cgo LDFLAGS: -L${SRCDIR}/../../rust-security-analyzer/target/release -lsecurity_analyzer -ldl
+// #include <stdlib.h>
+// extern char* analyze_file_ffi(const char* file_path, const char* content);
+// extern void free_string(char* s);
+import "C"
 
 // ScanRequest represents the incoming scan request
 type ScanRequest struct {
@@ -71,6 +79,32 @@ type PolicyResult struct {
 	Warnings   []string `json:"warnings"`
 }
 
+// Advanced analysis structures for Rust integration
+type AdvancedFinding struct {
+	File             string  `json:"file"`
+	Line             int     `json:"line"`
+	Column          int     `json:"column"`
+	FindingType     string  `json:"finding_type"`
+	Severity        string  `json:"severity"`
+	Description     string  `json:"description"`
+	Confidence      float64 `json:"confidence"`
+	CodeContext     string  `json:"code_context"`
+	VulnerabilityClass string `json:"vulnerability_class"`
+}
+
+type PerformanceMetrics struct {
+	FilesProcessed  int `json:"files_processed"`
+	TotalLines      int `json:"total_lines"`
+	AnalysisTimeMs  int `json:"analysis_time_ms"`
+	MemoryPeakMb    int `json:"memory_peak_mb"`
+}
+
+type AdvancedScanResult struct {
+	Findings          []AdvancedFinding            `json:"findings"`
+	LanguageStats     map[string]int              `json:"language_stats"`
+	PerformanceMetrics PerformanceMetrics         `json:"performance_metrics"`
+}
+
 // Simple LRU Cache for scan results
 type LRUCache struct {
 	capacity int
@@ -124,13 +158,23 @@ var scanCache = NewLRUCache(50) // Cache last 50 scans
 // Security patterns to detect (upgraded with context-aware regex - Go-compatible)
 var secretPatterns = map[string]*regexp.Regexp{
 	"AWS_KEY":           regexp.MustCompile(`AKIA[0-9A-Z]{16}`),
+	"AWS_SECRET":        regexp.MustCompile(`(?i)aws[_-]?secret[_-]?access[_-]?key["\s:=]+[A-Za-z0-9/+=]{40}`),
 	"GITHUB_TOKEN":      regexp.MustCompile(`gh[pousr]_[A-Za-z0-9]{36,}`),
+	"GITLAB_TOKEN":      regexp.MustCompile(`glpat-[A-Za-z0-9_-]{20,}`),
 	"PRIVATE_KEY":       regexp.MustCompile(`-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----`),
 	"GENERIC_API_KEY":   regexp.MustCompile(`(?i)api[_-]?key["\s:=]+[a-z0-9]{20,}`),
 	"PASSWORD":          regexp.MustCompile(`(?i)password["\s:=]+[^"\s]{8,}`),
 	"DATABASE_URL":      regexp.MustCompile(`(?i)(postgres|mysql|mongodb)://[^\s"']+`),
 	"JWT_TOKEN":         regexp.MustCompile(`eyJ[A-Za-z0-9-_=]+\.eyJ[A-Za-z0-9-_=]+\.?[A-Za-z0-9-_.+/=]*`),
+	"BEARER_TOKEN":      regexp.MustCompile(`(?i)bearer\s+[A-Za-z0-9-_=]+\.[A-Za-z0-9-_=]+\.[A-Za-z0-9-_=]*`),
+	"STRIPE_KEY":        regexp.MustCompile(`sk_(?:live|test)_[A-Za-z0-9]{24,}`),
+	"TWILIO_KEY":        regexp.MustCompile(`SK[A-Za-z0-9]{32}`),
+	"SENDGRID_KEY":      regexp.MustCompile(`SG\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}`),
+	"MAILGUN_KEY":       regexp.MustCompile(`key-[A-Za-z0-9]{32}`),
 	"SLACK_TOKEN":       regexp.MustCompile(`xox[baprs]-[0-9a-zA-Z]{10,48}`),
+	"DISCORD_TOKEN":     regexp.MustCompile(`[MN][A-Za-z0-9_-]{23,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{27,}`),
+	"GOOGLE_API_KEY":    regexp.MustCompile(`AIza[0-9A-Za-z-_]{35}`),
+	"AZURE_KEY":         regexp.MustCompile(`(?i)azure[_-]?key["\s:=]+[A-Za-z0-9+/=]{44}`),
 }
 
 var dangerousCodePatterns = map[string]*regexp.Regexp{
@@ -158,6 +202,9 @@ func main() {
 
 	// Policy validation endpoint
 	router.POST("/validate-policy", handlePolicyValidation)
+
+	// Advanced security analysis endpoint (Rust-powered)
+	router.POST("/advanced-scan", handleAdvancedScan)
 
 	log.Println("  Guardian-Ops API starting on :8080")
 	router.Run(":8080")
@@ -732,6 +779,118 @@ func handlePolicyValidation(c *gin.Context) {
 	c.JSON(200, policyResult)
 }
 
+// Advanced security analysis using Rust FFI
+func handleAdvancedScan(c *gin.Context) {
+	var req struct {
+		RepoPath string `json:"repo_path" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	log.Printf("Starting advanced Rust-powered scan for: %s", req.RepoPath)
+
+	startTime := time.Now()
+	findings, err := performAdvancedAnalysis(req.RepoPath)
+	duration := time.Since(startTime)
+
+	if err != nil {
+		log.Printf("Advanced scan error: %v", err)
+		c.JSON(500, gin.H{"error": "Advanced analysis failed", "details": err.Error()})
+		return
+	}
+
+	result := gin.H{
+		"findings": findings,
+		"scan_duration_ms": duration.Milliseconds(),
+		"total_findings": len(findings),
+		"scan_type": "advanced_ast_based",
+		"powered_by": "Rust + Tree-Sitter",
+	}
+
+	log.Printf("Advanced scan complete - %d findings in %v", len(findings), duration)
+	c.JSON(200, result)
+}
+
+// FFI wrapper to call Rust advanced analysis
+func performAdvancedAnalysis(repoPath string) ([]AdvancedFinding, error) {
+	var allFindings []AdvancedFinding
+
+	err := filepath.Walk(repoPath, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return err
+		}
+
+		// Only analyze source code files
+		ext := filepath.Ext(path)
+		if !isSourceFile(ext) {
+			return nil
+		}
+
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return nil
+		}
+
+		// Call Rust FFI function
+		findings, err := analyzeFileWithRust(path, string(content))
+		if err != nil {
+			log.Printf("Warning: Failed to analyze %s: %v", path, err)
+			return nil // Continue with other files
+		}
+
+		allFindings = append(allFindings, findings...)
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return allFindings, nil
+}
+
+// Check if file extension is for source code
+func isSourceFile(ext string) bool {
+	sourceExts := []string{".rs", ".go", ".py", ".js", ".ts", ".java", ".cpp", ".c", ".h"}
+	for _, sourceExt := range sourceExts {
+		if ext == sourceExt {
+			return true
+		}
+	}
+	return false
+}
+
+// FFI function to call Rust analysis
+func analyzeFileWithRust(filePath, content string) ([]AdvancedFinding, error) {
+	// Convert Go strings to C strings
+	cFilePath := C.CString(filePath)
+	defer C.free(unsafe.Pointer(cFilePath))
+
+	cContent := C.CString(content)
+	defer C.free(unsafe.Pointer(cContent))
+
+	// Call Rust function
+	cResult := C.analyze_file_ffi(cFilePath, cContent)
+	if cResult == nil {
+		return nil, fmt.Errorf("Rust analysis returned null")
+	}
+	defer C.free_string(cResult)
+
+	// Convert C string back to Go string
+	resultStr := C.GoString(cResult)
+
+	// Parse JSON result
+	var scanResult AdvancedScanResult
+	if err := json.Unmarshal([]byte(resultStr), &scanResult); err != nil {
+		return nil, fmt.Errorf("failed to parse Rust result: %v", err)
+	}
+
+	return scanResult.Findings, nil
+}
+
 // Helper functions
 
 func shouldSkipFile(path string) bool {
@@ -917,33 +1076,64 @@ func calculateConfidence(line, match, patternType string) float64 {
 	
 	// Boost confidence factors
 	if strings.Contains(lineLower, "secret") || strings.Contains(lineLower, "key") ||
-	   strings.Contains(lineLower, "token") || strings.Contains(lineLower, "password") {
+	   strings.Contains(lineLower, "token") || strings.Contains(lineLower, "password") ||
+	   strings.Contains(lineLower, "auth") || strings.Contains(lineLower, "bearer") {
 		confidence += 0.2
 	}
 	
-	if strings.Contains(line, "=") && strings.Contains(line, "\"") {
+	if strings.Contains(line, "=") && (strings.Contains(line, "\"") || strings.Contains(line, "'")) {
 		confidence += 0.15 // Looks like an assignment
 	}
 	
-	if patternType == "AWS_KEY" || patternType == "GITHUB_TOKEN" || patternType == "PRIVATE_KEY" {
-		confidence += 0.2 // These patterns are very specific
+	// High-confidence patterns
+	highConfidencePatterns := []string{"AWS_KEY", "AWS_SECRET", "GITHUB_TOKEN", "GITLAB_TOKEN", "PRIVATE_KEY", "STRIPE_KEY", "TWILIO_KEY", "SENDGRID_KEY", "SLACK_TOKEN", "DISCORD_TOKEN", "GOOGLE_API_KEY"}
+	for _, p := range highConfidencePatterns {
+		if patternType == p {
+			confidence += 0.25 // These patterns are very specific
+			break
+		}
+	}
+	
+	// Medium-confidence patterns
+	mediumConfidencePatterns := []string{"JWT_TOKEN", "BEARER_TOKEN", "AZURE_KEY", "MAILGUN_KEY"}
+	for _, p := range mediumConfidencePatterns {
+		if patternType == p {
+			confidence += 0.15
+			break
+		}
 	}
 	
 	// Reduce confidence factors
-	if strings.Contains(lineLower, "example") || strings.Contains(lineLower, "test") {
+	if strings.Contains(lineLower, "example") || strings.Contains(lineLower, "test") ||
+	   strings.Contains(lineLower, "sample") || strings.Contains(lineLower, "demo") {
 		confidence -= 0.3
 	}
 	
-	if strings.Contains(lineLower, "//") || strings.Contains(lineLower, "#") {
+	if strings.Contains(lineLower, "//") || strings.Contains(lineLower, "#") ||
+	   strings.Contains(lineLower, "/*") || strings.Contains(lineLower, "*") {
 		confidence -= 0.2 // In comment
+	}
+	
+	// Context checks for false positives
+	if isLikelyFalsePositive(line, patternType) {
+		confidence -= 0.4
 	}
 	
 	// Entropy check - real secrets have high randomness
 	entropy := calculateEntropy(match)
-	if entropy > 3.5 {
-		confidence += 0.15
+	if entropy > 4.0 {
+		confidence += 0.2
+	} else if entropy > 3.0 {
+		confidence += 0.1
 	} else if entropy < 2.0 {
 		confidence -= 0.2
+	}
+	
+	// Length check - secrets are usually long enough
+	if len(match) < 10 {
+		confidence -= 0.1
+	} else if len(match) > 50 {
+		confidence += 0.1
 	}
 	
 	// Clamp between 0 and 1
@@ -955,6 +1145,37 @@ func calculateConfidence(line, match, patternType string) float64 {
 	}
 	
 	return confidence
+}
+
+// Check for likely false positives based on context
+func isLikelyFalsePositive(line, patternType string) bool {
+	lineLower := strings.ToLower(line)
+	
+	// Common false positive contexts
+	falsePositiveContexts := []string{
+		"readme", "documentation", "example", "sample", "test", "demo",
+		"placeholder", "your_", "replace_with", "fake", "mock",
+	}
+	
+	for _, ctx := range falsePositiveContexts {
+		if strings.Contains(lineLower, ctx) {
+			return true
+		}
+	}
+	
+	// Specific checks for certain patterns
+	switch patternType {
+	case "JWT_TOKEN", "BEARER_TOKEN":
+		if strings.Contains(lineLower, "example") || strings.Contains(lineLower, "test") {
+			return true
+		}
+	case "GOOGLE_API_KEY":
+		if strings.Contains(lineLower, "console.developers.google.com") {
+			return true // Documentation reference
+		}
+	}
+	
+	return false
 }
 
 // Calculate Shannon entropy (randomness measure)
