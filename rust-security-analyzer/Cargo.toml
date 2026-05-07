@@ -20,4 +20,3 @@ tree-sitter-python = "0.21"
 tree-sitter-go = "0.20"
 tokio = { version = "1.0", features = ["full"] }  # Async runtime
 anyhow = "1.0"  # Error handling
-lazy_static = "1.4"  # Static initialization

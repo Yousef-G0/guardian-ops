@@ -3,7 +3,6 @@ use std::os::raw::c_char;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use regex::Regex;
-use lazy_static::lazy_static;
 use tree_sitter::{Parser, Language};
 use rayon::prelude::*;
 
@@ -66,7 +65,7 @@ impl AdvancedSecurityAnalyzer {
 
     unsafe fn create_parser(language: Language) -> Parser {
         let mut parser = Parser::new();
-        parser.set_language(language).unwrap();
+        parser.set_language(&language).unwrap();
         parser
     }
 
@@ -99,7 +98,8 @@ impl AdvancedSecurityAnalyzer {
             .unwrap_or("");
 
         // 1. AST-based analysis for supported languages
-        if let Some(parser) = self.parsers.get_mut(extension) {
+        if self.parsers.contains_key(extension) {
+            let parser = self.parsers.get_mut(extension).unwrap();
             findings.extend(self.ast_analysis(parser, file_path, content, extension));
         }
 
@@ -155,7 +155,7 @@ impl AdvancedSecurityAnalyzer {
                     severity: "MEDIUM".to_string(),
                     description: "Unsafe block allows raw pointer operations".to_string(),
                     confidence: 0.9,
-                    code_context: self.extract_context(source, current_node),
+                    code_context: self.extract_context(source, &current_node),
                     vulnerability_class: "Memory Safety".to_string(),
                 });
             }
@@ -172,7 +172,7 @@ impl AdvancedSecurityAnalyzer {
                         severity: "LOW".to_string(),
                         description: "Use of unwrap() or expect() may cause panics".to_string(),
                         confidence: 0.7,
-                        code_context: self.extract_context(source, current_node),
+                        code_context: self.extract_context(source, &current_node),
                         vulnerability_class: "Error Handling".to_string(),
                     });
                 }
@@ -214,7 +214,7 @@ impl AdvancedSecurityAnalyzer {
                         severity: "HIGH".to_string(),
                         description: "Use of eval() can execute arbitrary code".to_string(),
                         confidence: 0.95,
-                        code_context: self.extract_context(source, current_node),
+                        code_context: self.extract_context(source, &current_node),
                         vulnerability_class: "Code Injection".to_string(),
                     });
                 }
@@ -232,7 +232,7 @@ impl AdvancedSecurityAnalyzer {
                         severity: "HIGH".to_string(),
                         description: "Potential XSS via innerHTML with string concatenation".to_string(),
                         confidence: 0.85,
-                        code_context: self.extract_context(source, current_node),
+                        code_context: self.extract_context(source, &current_node),
                         vulnerability_class: "Cross-Site Scripting".to_string(),
                     });
                 }
@@ -274,7 +274,7 @@ impl AdvancedSecurityAnalyzer {
                         severity: "CRITICAL".to_string(),
                         description: "Use of exec() or eval() allows code execution".to_string(),
                         confidence: 0.95,
-                        code_context: self.extract_context(source, current_node),
+                        code_context: self.extract_context(source, &current_node),
                         vulnerability_class: "Code Injection".to_string(),
                     });
                 }
@@ -318,7 +318,7 @@ impl AdvancedSecurityAnalyzer {
                             severity: "HIGH".to_string(),
                             description: "Potential SQL injection via string concatenation".to_string(),
                             confidence: 0.8,
-                            code_context: self.extract_context(source, current_node),
+                            code_context: self.extract_context(source, &current_node),
                             vulnerability_class: "SQL Injection".to_string(),
                         });
                     }
@@ -511,7 +511,6 @@ pub extern "C" fn free_string(s: *mut c_char) {
 
 // Async analysis function for high-throughput processing
 pub async fn analyze_repository_async(repo_path: &str) -> Result<AdvancedScanResult, anyhow::Error> {
-    let mut analyzer = AdvancedSecurityAnalyzer::new();
     let start_time = std::time::Instant::now();
 
     // Collect all source files
@@ -520,13 +519,15 @@ pub async fn analyze_repository_async(repo_path: &str) -> Result<AdvancedScanRes
     // Analyze files in parallel
     let findings: Vec<AdvancedFinding> = files
         .into_par_iter()
-        .filter_map(|file_path| {
+        .flat_map(|file_path| {
             std::fs::read_to_string(&file_path)
                 .ok()
-                .map(|content| analyzer.analyze_file(&file_path, &content))
+                .map(|content| {
+                    let mut file_analyzer = AdvancedSecurityAnalyzer::new();
+                    file_analyzer.analyze_file(&file_path, &content)
+                })
                 .unwrap_or_default()
         })
-        .flatten()
         .collect();
 
     let analysis_time = start_time.elapsed().as_millis() as u64;
