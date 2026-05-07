@@ -119,7 +119,7 @@ impl AdvancedSecurityAnalyzer {
         findings
     }
 
-    fn ast_analysis(&mut self, parser: &mut Parser, file_path: &str, content: &str, lang: &str) -> Vec<AdvancedFinding> {
+    fn ast_analysis(&self, parser: &mut Parser, file_path: &str, content: &str, lang: &str) -> Vec<AdvancedFinding> {
         let mut findings = Vec::new();
 
         let tree = match parser.parse(content, None) {
