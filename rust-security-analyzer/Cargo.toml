@@ -1,0 +1,24 @@
+[package]
+name = "rust-security-analyzer"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "security_analyzer"
+crate-type = ["cdylib"]  # Compile as shared library for FFI
+
+[dependencies]
+regex = "1.10"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+rayon = "1.8"
+syn = { version = "2.0", features = ["full", "parsing"] }  # AST parsing for Rust code
+swc_ecma_parser = "0.143"  # JavaScript/TypeScript AST parsing
+tree-sitter = "0.22"  # Multi-language AST parsing
+tree-sitter-rust = "0.21"
+tree-sitter-javascript = "0.21"
+tree-sitter-python = "0.21"
+tree-sitter-go = "0.20"
+tokio = { version = "1.0", features = ["full"] }  # Async runtime
+anyhow = "1.0"  # Error handling
+lazy_static = "1.4"  # Static initialization
