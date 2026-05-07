@@ -31,12 +31,45 @@ jobs:
         with:
           go-version: '1.21'
 
+      - name: Setup Rust (for advanced features)
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust-security-analyzer/target
+          key: ${{ runner.os }}-deps-${{ hashFiles('**/go.sum', '**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-deps-
+
       - name: Start Security API
         run: |
           cd cmd/api
           go mod download
-          go build -o ../../security-api main.go
-          cd ../..
+
+          # Try to build advanced version first
+          if command -v cargo &> /dev/null; then
+            echo "Building with Rust integration..."
+            cd ../rust-security-analyzer
+            cargo build --release
+            cd ../cmd/api
+            export CGO_LDFLAGS="-L$(pwd)/../../rust-security-analyzer/target/release -lsecurity_analyzer -ldl"
+            go build -o ../../security-api-advanced main.go
+            cd ../..
+            mv security-api-advanced security-api
+          else
+            echo "Building basic version..."
+            cd cmd/api
+            go build -o ../../security-api main.go
+            cd ../..
+          fi
+
           ./security-api &
           sleep 5
           curl http://localhost:8080/health || echo "API not ready"
@@ -44,13 +77,26 @@ jobs:
       - name: Run Security Scan
         id: scan
         run: |
-          SCAN_RESULT=$(curl -s -X POST http://localhost:8080/scan \
-            -H "Content-Type: application/json" \
-            -d "{
-              \"repo_path\": \"$GITHUB_WORKSPACE\",
-              \"branch\": \"$GITHUB_REF_NAME\",
-              \"commit_hash\": \"$GITHUB_SHA\"
-            }")
+          # Use advanced scan if available, fallback to basic
+          if curl -s http://localhost:8080/advanced-scan > /dev/null 2>&1; then
+            echo "Running advanced security scan (AST-based analysis)..."
+            SCAN_RESULT=$(curl -s -X POST http://localhost:8080/advanced-scan \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"repo_path\": \"$GITHUB_WORKSPACE\",
+                \"branch\": \"$GITHUB_REF_NAME\",
+                \"commit_hash\": \"$GITHUB_SHA\"
+              }")
+          else
+            echo "Running basic security scan..."
+            SCAN_RESULT=$(curl -s -X POST http://localhost:8080/scan \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"repo_path\": \"$GITHUB_WORKSPACE\",
+                \"branch\": \"$GITHUB_REF_NAME\",
+                \"commit_hash\": \"$GITHUB_SHA\"
+              }")
+          fi
           
           echo "Scan Result:"
           echo "$SCAN_RESULT" | jq '.'
