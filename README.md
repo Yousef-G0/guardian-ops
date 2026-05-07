@@ -64,7 +64,46 @@ This isn't just a scanner - it's a **self-defending pipeline**.
 - Runtime monitoring for anomalous activity
 - **Smart features**: Context-aware detection, confidence scoring, anomaly detection, caching
 - **Advanced patterns**: Negative lookbehinds to avoid false positives
+- **Rust-Powered Advanced Analysis**: AST-based security scanning for multiple languages
 - Automated rollback when threats appear
+
+##   Advanced Security Analysis (Rust-Powered)
+
+Guardian-Ops now includes cutting-edge security analysis powered by Rust and Tree-Sitter:
+
+### Features
+- **AST-Based Analysis**: Parses code structure to detect complex vulnerabilities
+- **Multi-Language Support**: Rust, Go, Python, JavaScript/TypeScript, Java
+- **Data Flow Analysis**: Tracks user input through dangerous functions
+- **Cryptographic Analysis**: Detects weak algorithms and insecure practices
+- **Performance**: Parallel processing with Rayon, SIMD-accelerated regex
+- **Memory Safety**: Rust's guarantees prevent memory-related vulnerabilities
+
+### Advanced Detection Capabilities
+- **Unsafe blocks** in Rust code
+- **Dynamic code execution** (eval, exec) with context analysis
+- **SQL injection** via AST parsing (not just regex)
+- **XSS vulnerabilities** through DOM manipulation analysis
+- **Command injection** with data flow tracking
+- **Cryptographic weaknesses** (MD5, SHA1, weak ciphers)
+
+### API Endpoints
+```bash
+# Traditional scan (Go-based, always available)
+POST /scan
+
+# Advanced AST-based scan (Rust-powered, requires advanced build)
+POST /advanced-scan
+
+# Health check
+GET /health
+
+# Risk score calculation
+POST /risk-score
+
+# Policy validation
+POST /validate-policy
+```
 
 ##  Quick Start
 
@@ -83,10 +122,46 @@ chmod +x setup.sh
 ./setup.sh
 ```
 
+### Build with Advanced Features
+
+For the full Rust-powered analysis experience:
+
+```bash
+# Install Rust (if not already installed)
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source ~/.cargo/env
+
+# Run the setup script (includes advanced build)
+./setup.sh
+```
+
+### Manual Build Steps
+
+If you prefer manual building:
+
+```bash
+# Basic version
+cd cmd/api
+go build -o ../../bin/security-api main.go
+
+# Advanced version (requires Rust)
+cd ../../rust-security-analyzer
+cargo build --release
+cd ../cmd/api
+export CGO_LDFLAGS="-L$(pwd)/../../rust-security-analyzer/target/release -lsecurity_analyzer -ldl"
+go build -o ../../bin/security-api-advanced main.go
+```
+
 ### Run locally
 
 ```bash
+# Basic version
 ./bin/security-api
+
+# Advanced version with Rust integration
+./bin/security-api-advanced
+
+# Runtime agent (requires sudo for system monitoring)
 sudo ./bin/runtime-agent
 ```
 
