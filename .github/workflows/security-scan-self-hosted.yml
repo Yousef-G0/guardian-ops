@@ -43,22 +43,21 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-rust-
 
-    - name: Build Security API
+    - name: Build Rust Security Analyzer
       run: |
-        cd cmd/api
-        go build -o ../../bin/security-api main.go
-
-    - name: Build Advanced Security API (with Rust)
-      run: |
-        echo "Building Rust security analyzer..."
+        echo "Building Rust security analyzer library..."
         cd rust-security-analyzer
         cargo build --release
+        echo "✓ Rust library built successfully"
         cd ..
 
+    - name: Build Security API (with Rust)
+      run: |
         echo "Building Go API with Rust FFI integration..."
         export CGO_LDFLAGS="-L$(pwd)/rust-security-analyzer/target/release -lsecurity_analyzer -ldl"
         cd cmd/api
-        go build -o ../../bin/security-api-advanced main.go
+        go build -o ../../bin/security-api main.go
+        echo "✓ Security API built successfully"
         cd ../..
 
     - name: Start Security API

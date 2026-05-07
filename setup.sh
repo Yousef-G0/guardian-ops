@@ -57,32 +57,29 @@ fi
 echo ""
 echo "Building applications..."
 
-echo "  → Building Security API..."
+# Build Rust first if available (required for Go FFI linking)
+if [ "$RUST_AVAILABLE" = true ]; then
+    echo "  → Building Rust security analyzer..."
+    cd rust-security-analyzer
+    cargo build --release
+    echo -e "${GREEN}✓${NC} Rust library built"
+    cd ..
+fi
+
+# Build Security API with Rust FFI support
+echo "  → Building Security API (with Rust FFI)..."
+export CGO_LDFLAGS="-L$(pwd)/rust-security-analyzer/target/release -lsecurity_analyzer -ldl"
 cd cmd/api
 go mod download
 go build -o ../../bin/security-api main.go
 cd ../..
 echo -e "${GREEN}✓${NC} Security API built: ./bin/security-api"
 
-# Build advanced version if Rust is available
+# Additional confirmation for advanced features
 if [ "$RUST_AVAILABLE" = true ]; then
-    echo ""
-    echo "  → Building Advanced Security API (Rust integration)..."
-    echo "    Building Rust security analyzer..."
-    cd rust-security-analyzer
-    cargo build --release
-    echo "    Rust library built successfully"
-    cd ..
-
-    echo "    Building Go API with Rust FFI integration..."
-    export CGO_LDFLAGS="-L$(pwd)/rust-security-analyzer/target/release -lsecurity_analyzer -ldl"
-    cd cmd/api
-    go build -o ../../bin/security-api-advanced main.go
-    cd ../..
-    echo -e "${GREEN}✓${NC} Advanced Security API built: ./bin/security-api-advanced"
     echo -e "${GREEN}✓${NC} Advanced features available: AST-based analysis, multi-language support"
 else
-    echo -e "${YELLOW}⚠${NC}  Skipping advanced build (Rust not available)"
+    echo -e "${YELLOW}⚠${NC}  Running in basic mode (Rust not available)"
 fi
 
 echo "  → Building Runtime Agent..."

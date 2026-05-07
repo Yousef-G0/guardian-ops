@@ -515,7 +515,7 @@ pub async fn analyze_repository_async(repo_path: &str) -> Result<AdvancedScanRes
     let start_time = std::time::Instant::now();
 
     // Collect all source files
-    let files = Self::collect_source_files(repo_path)?;
+    let files = AdvancedSecurityAnalyzer::collect_source_files(repo_path)?;
 
     // Analyze files in parallel
     let findings: Vec<AdvancedFinding> = files

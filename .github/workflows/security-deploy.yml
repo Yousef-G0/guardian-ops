@@ -48,28 +48,22 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-deps-
 
-      - name: Start Security API
+      - name: Build Security API
         run: |
           cd cmd/api
           go mod download
-
-          # Try to build advanced version first
-          if command -v cargo &> /dev/null; then
-            echo "Building with Rust integration..."
-            cd ../rust-security-analyzer
-            cargo build --release
-            cd ../cmd/api
-            export CGO_LDFLAGS="-L$(pwd)/../../rust-security-analyzer/target/release -lsecurity_analyzer -ldl"
-            go build -o ../../security-api-advanced main.go
-            cd ../..
-            mv security-api-advanced security-api
-          else
-            echo "Building basic version..."
-            cd cmd/api
-            go build -o ../../security-api main.go
-            cd ../..
-          fi
-
+          
+          # Build Rust library first
+          cd ../../rust-security-analyzer
+          cargo build --release
+          cd ../cmd/api
+          
+          # Build Go API with Rust FFI
+          export CGO_LDFLAGS="-L$(pwd)/../../rust-security-analyzer/target/release -lsecurity_analyzer -ldl"
+          go build -o ../../security-api main.go
+          cd ../..
+          
+          # Start the API in the background
           ./security-api &
           sleep 5
           curl http://localhost:8080/health || echo "API not ready"
