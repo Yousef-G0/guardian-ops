@@ -611,7 +611,6 @@ func applyPolicies(result *ScanResult) PolicyResult {
 	}
 
 	// Multi-environment support: Get thresholds from environment
-	maxRiskScore := getEnvIntOrDefault("MAX_RISK_SCORE", 70)
 	maxRiskProd := getEnvIntOrDefault("MAX_RISK_PROD", 50)
 	maxRiskStaging := getEnvIntOrDefault("MAX_RISK_STAGING", 70)
 	maxRiskDev := getEnvIntOrDefault("MAX_RISK_DEV", 100)
