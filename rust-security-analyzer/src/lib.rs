@@ -99,8 +99,12 @@ impl AdvancedSecurityAnalyzer {
 
         // 1. AST-based analysis for supported languages
         if self.parsers.contains_key(extension) {
-            let parser = self.parsers.get_mut(extension).unwrap();
-            findings.extend(self.ast_analysis(parser, file_path, content, extension));
+            // Separate mutable borrow scope to avoid holding it during method call
+            let ast_findings = {
+                let parser = self.parsers.get_mut(extension).unwrap();
+                self.ast_analysis(parser, file_path, content, extension)
+            };
+            findings.extend(ast_findings);
         }
 
         // 2. Advanced regex patterns
@@ -531,12 +535,15 @@ pub async fn analyze_repository_async(repo_path: &str) -> Result<AdvancedScanRes
         .collect();
 
     let analysis_time = start_time.elapsed().as_millis() as u64;
+    
+    // Capture findings length before moving
+    let findings_count = findings.len();
 
     Ok(AdvancedScanResult {
         findings,
         language_stats: HashMap::new(), // Would compute from files
         performance_metrics: PerformanceMetrics {
-            files_processed: findings.len(),
+            files_processed: findings_count,
             total_lines: 0, // Would compute
             analysis_time_ms: analysis_time,
             memory_peak_mb: 0, // Would track
