@@ -102,7 +102,7 @@ impl AdvancedSecurityAnalyzer {
             // Separate mutable borrow scope to avoid holding it during method call
             let ast_findings = {
                 let parser = self.parsers.get_mut(extension).unwrap();
-                self.ast_analysis(parser, file_path, content, extension)
+                Self::ast_analysis(parser, file_path, content, extension)
             };
             findings.extend(ast_findings);
         }
@@ -119,7 +119,7 @@ impl AdvancedSecurityAnalyzer {
         findings
     }
 
-    fn ast_analysis(&self, parser: &mut Parser, file_path: &str, content: &str, lang: &str) -> Vec<AdvancedFinding> {
+    fn ast_analysis(parser: &mut Parser, file_path: &str, content: &str, lang: &str) -> Vec<AdvancedFinding> {
         let mut findings = Vec::new();
 
         let tree = match parser.parse(content, None) {
@@ -130,17 +130,17 @@ impl AdvancedSecurityAnalyzer {
         let root_node = tree.root_node();
 
         match lang {
-            "rs" => findings.extend(self.analyze_rust_ast(&root_node, content, file_path)),
-            "js" | "ts" => findings.extend(self.analyze_js_ast(&root_node, content, file_path)),
-            "py" => findings.extend(self.analyze_python_ast(&root_node, content, file_path)),
-            "go" => findings.extend(self.analyze_go_ast(&root_node, content, file_path)),
+            "rs" => findings.extend(Self::analyze_rust_ast(&root_node, content, file_path)),
+            "js" | "ts" => findings.extend(Self::analyze_js_ast(&root_node, content, file_path)),
+            "py" => findings.extend(Self::analyze_python_ast(&root_node, content, file_path)),
+            "go" => findings.extend(Self::analyze_go_ast(&root_node, content, file_path)),
             _ => {}
         }
 
         findings
     }
 
-    fn analyze_rust_ast(&self, node: &tree_sitter::Node, source: &str, file_path: &str) -> Vec<AdvancedFinding> {
+    fn analyze_rust_ast(node: &tree_sitter::Node, source: &str, file_path: &str) -> Vec<AdvancedFinding> {
         let mut findings = Vec::new();
 
         // Walk the AST looking for security issues
@@ -159,7 +159,7 @@ impl AdvancedSecurityAnalyzer {
                     severity: "MEDIUM".to_string(),
                     description: "Unsafe block allows raw pointer operations".to_string(),
                     confidence: 0.9,
-                    code_context: self.extract_context(source, &current_node),
+                    code_context: Self::extract_context(source, &current_node),
                     vulnerability_class: "Memory Safety".to_string(),
                 });
             }
@@ -176,7 +176,7 @@ impl AdvancedSecurityAnalyzer {
                         severity: "LOW".to_string(),
                         description: "Use of unwrap() or expect() may cause panics".to_string(),
                         confidence: 0.7,
-                        code_context: self.extract_context(source, &current_node),
+                        code_context: Self::extract_context(source, &current_node),
                         vulnerability_class: "Error Handling".to_string(),
                     });
                 }
@@ -199,7 +199,7 @@ impl AdvancedSecurityAnalyzer {
         }
     }
 
-    fn analyze_js_ast(&self, node: &tree_sitter::Node, source: &str, file_path: &str) -> Vec<AdvancedFinding> {
+    fn analyze_js_ast(node: &tree_sitter::Node, source: &str, file_path: &str) -> Vec<AdvancedFinding> {
         let mut findings = Vec::new();
         let mut cursor = node.walk();
 
@@ -218,7 +218,7 @@ impl AdvancedSecurityAnalyzer {
                         severity: "HIGH".to_string(),
                         description: "Use of eval() can execute arbitrary code".to_string(),
                         confidence: 0.95,
-                        code_context: self.extract_context(source, &current_node),
+                        code_context: Self::extract_context(source, &current_node),
                         vulnerability_class: "Code Injection".to_string(),
                     });
                 }
@@ -236,7 +236,7 @@ impl AdvancedSecurityAnalyzer {
                         severity: "HIGH".to_string(),
                         description: "Potential XSS via innerHTML with string concatenation".to_string(),
                         confidence: 0.85,
-                        code_context: self.extract_context(source, &current_node),
+                        code_context: Self::extract_context(source, &current_node),
                         vulnerability_class: "Cross-Site Scripting".to_string(),
                     });
                 }
@@ -259,7 +259,7 @@ impl AdvancedSecurityAnalyzer {
         }
     }
 
-    fn analyze_python_ast(&self, node: &tree_sitter::Node, source: &str, file_path: &str) -> Vec<AdvancedFinding> {
+    fn analyze_python_ast(node: &tree_sitter::Node, source: &str, file_path: &str) -> Vec<AdvancedFinding> {
         let mut findings = Vec::new();
         let mut cursor = node.walk();
 
@@ -278,7 +278,7 @@ impl AdvancedSecurityAnalyzer {
                         severity: "CRITICAL".to_string(),
                         description: "Use of exec() or eval() allows code execution".to_string(),
                         confidence: 0.95,
-                        code_context: self.extract_context(source, &current_node),
+                        code_context: Self::extract_context(source, &current_node),
                         vulnerability_class: "Code Injection".to_string(),
                     });
                 }
@@ -301,7 +301,7 @@ impl AdvancedSecurityAnalyzer {
         }
     }
 
-    fn analyze_go_ast(&self, node: &tree_sitter::Node, source: &str, file_path: &str) -> Vec<AdvancedFinding> {
+    fn analyze_go_ast(node: &tree_sitter::Node, source: &str, file_path: &str) -> Vec<AdvancedFinding> {
         let mut findings = Vec::new();
         let mut cursor = node.walk();
 
@@ -322,7 +322,7 @@ impl AdvancedSecurityAnalyzer {
                             severity: "HIGH".to_string(),
                             description: "Potential SQL injection via string concatenation".to_string(),
                             confidence: 0.8,
-                            code_context: self.extract_context(source, &current_node),
+                            code_context: Self::extract_context(source, &current_node),
                             vulnerability_class: "SQL Injection".to_string(),
                         });
                     }
@@ -443,7 +443,7 @@ impl AdvancedSecurityAnalyzer {
         findings
     }
 
-    fn extract_context(&self, source: &str, node: &tree_sitter::Node) -> String {
+    fn extract_context(source: &str, node: &tree_sitter::Node) -> String {
         let start = node.start_byte();
         let end = node.end_byte();
         let context_start = start.saturating_sub(50);
