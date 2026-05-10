@@ -3,7 +3,7 @@ use std::os::raw::c_char;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use regex::Regex;
-use tree_sitter::{Parser, Language};
+use tree_sitter::Parser;
 use rayon::prelude::*;
 use tree_sitter_rust::LANGUAGE as rust_language;
 use tree_sitter_javascript::LANGUAGE as js_language;
@@ -49,23 +49,23 @@ impl AdvancedSecurityAnalyzer {
 
         // Initialize parsers for different languages
         let mut rs_parser = Parser::new();
-        rs_parser.set_language(&rust_language()).unwrap();
+        rs_parser.set_language(&rust_language).unwrap();
         parsers.insert("rs".to_string(), rs_parser);
 
         let mut js_parser = Parser::new();
-        js_parser.set_language(&js_language()).unwrap();
+        js_parser.set_language(&js_language).unwrap();
         parsers.insert("js".to_string(), js_parser);
 
         let mut ts_parser = Parser::new();
-        ts_parser.set_language(&js_language()).unwrap();
+        ts_parser.set_language(&js_language).unwrap();
         parsers.insert("ts".to_string(), ts_parser);
 
         let mut py_parser = Parser::new();
-        py_parser.set_language(&python_language()).unwrap();
+        py_parser.set_language(&python_language).unwrap();
         parsers.insert("py".to_string(), py_parser);
 
         let mut go_parser = Parser::new();
-        go_parser.set_language(&go_language()).unwrap();
+        go_parser.set_language(&go_language).unwrap();
         parsers.insert("go".to_string(), go_parser);
 
         let patterns = Self::load_advanced_patterns();
