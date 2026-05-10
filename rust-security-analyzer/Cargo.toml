@@ -13,10 +13,10 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 rayon = "1.8"
 syn = { version = "2.0", features = ["full", "parsing"] }  # AST parsing for Rust code
-tree-sitter = "0.24.2"  # Multi-language AST parsing (includes JS/TS via tree-sitter-javascript)
+tree-sitter = "0.22"  # Multi-language AST parsing (includes JS/TS via tree-sitter-javascript)
 tree-sitter-rust = "0.24.2"
-tree-sitter-javascript = "0.24.2"
-tree-sitter-python = "0.24.2"
-tree-sitter-go = "0.24.2"
+tree-sitter-javascript = "0.25"
+tree-sitter-python = "0.25"
+tree-sitter-go = "0.25"
 tokio = { version = "1.0", features = ["full"] }  # Async runtime
 anyhow = "1.0"  # Error handling
