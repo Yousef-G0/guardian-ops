@@ -5,12 +5,10 @@ use std::collections::HashMap;
 use regex::Regex;
 use tree_sitter::{Parser, Language};
 use rayon::prelude::*;
-
-// External language definitions for tree-sitter
-extern "C" { fn tree_sitter_rust() -> Language; }
-extern "C" { fn tree_sitter_javascript() -> Language; }
-extern "C" { fn tree_sitter_python() -> Language; }
-extern "C" { fn tree_sitter_go() -> Language; }
+use tree_sitter_rust::language as rust_language;
+use tree_sitter_javascript::language as js_language;
+use tree_sitter_python::language as python_language;
+use tree_sitter_go::language as go_language;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AdvancedFinding {
@@ -50,20 +48,18 @@ impl AdvancedSecurityAnalyzer {
         let mut parsers = HashMap::new();
 
         // Initialize parsers for different languages
-        unsafe {
-            parsers.insert("rs".to_string(), Self::create_parser(tree_sitter_rust()));
-            parsers.insert("js".to_string(), Self::create_parser(tree_sitter_javascript()));
-            parsers.insert("ts".to_string(), Self::create_parser(tree_sitter_javascript()));
-            parsers.insert("py".to_string(), Self::create_parser(tree_sitter_python()));
-            parsers.insert("go".to_string(), Self::create_parser(tree_sitter_go()));
-        }
+        parsers.insert("rs".to_string(), Self::create_parser(rust_language()));
+        parsers.insert("js".to_string(), Self::create_parser(js_language()));
+        parsers.insert("ts".to_string(), Self::create_parser(js_language()));
+        parsers.insert("py".to_string(), Self::create_parser(python_language()));
+        parsers.insert("go".to_string(), Self::create_parser(go_language()));
 
         let patterns = Self::load_advanced_patterns();
 
         AdvancedSecurityAnalyzer { parsers, patterns }
     }
 
-    unsafe fn create_parser(language: Language) -> Parser {
+    fn create_parser(language: Language) -> Parser {
         let mut parser = Parser::new();
         parser.set_language(&language).unwrap();
         parser
