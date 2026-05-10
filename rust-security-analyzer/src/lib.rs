@@ -5,10 +5,10 @@ use std::collections::HashMap;
 use regex::Regex;
 use tree_sitter::{Parser, Language};
 use rayon::prelude::*;
-use tree_sitter_rust::language as rust_language;
-use tree_sitter_javascript::language as js_language;
-use tree_sitter_python::language as python_language;
-use tree_sitter_go::language as go_language;
+use tree_sitter_rust::LANGUAGE as rust_language;
+use tree_sitter_javascript::LANGUAGE as js_language;
+use tree_sitter_python::LANGUAGE as python_language;
+use tree_sitter_go::LANGUAGE as go_language;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AdvancedFinding {
@@ -61,7 +61,7 @@ impl AdvancedSecurityAnalyzer {
 
     fn create_parser(language: Language) -> Parser {
         let mut parser = Parser::new();
-        parser.set_language(language).unwrap();
+        parser.set_language(&language).unwrap();
         parser
     }
 
