@@ -48,19 +48,20 @@ impl AdvancedSecurityAnalyzer {
         let mut parsers = HashMap::new();
 
         // Initialize parsers for different languages
-        parsers.insert("rs".to_string(), Self::create_parser(rust_language()));
-        parsers.insert("js".to_string(), Self::create_parser(js_language()));
-        parsers.insert("ts".to_string(), Self::create_parser(js_language()));
-        parsers.insert("py".to_string(), Self::create_parser(python_language()));
-        parsers.insert("go".to_string(), Self::create_parser(go_language()));
+        parsers.insert("rs".to_string(), Self::create_parser(rust_language));
+        parsers.insert("js".to_string(), Self::create_parser(js_language));
+        parsers.insert("ts".to_string(), Self::create_parser(js_language));
+        parsers.insert("py".to_string(), Self::create_parser(python_language));
+        parsers.insert("go".to_string(), Self::create_parser(go_language));
 
         let patterns = Self::load_advanced_patterns();
 
         AdvancedSecurityAnalyzer { parsers, patterns }
     }
 
-    fn create_parser(language: Language) -> Parser {
+    fn create_parser(language_fn: impl Fn() -> Language) -> Parser {
         let mut parser = Parser::new();
+        let language = language_fn();
         parser.set_language(&language).unwrap();
         parser
     }
