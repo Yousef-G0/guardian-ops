@@ -3,15 +3,15 @@ use std::os::raw::c_char;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use regex::Regex;
-use tree_sitter::{Parser, Language};
+use tree_sitter::Parser;
 use rayon::prelude::*;
 use lazy_static::lazy_static;
 
-use tree_sitter_rust::LANGUAGE as RUST_LANGUAGE;
-use tree_sitter_javascript::LANGUAGE as JS_LANGUAGE;
-use tree_sitter_python::LANGUAGE as PYTHON_LANGUAGE;
-use tree_sitter_go::LANGUAGE as GO_LANGUAGE;
-use tree_sitter_typescript::LANGUAGE_TYPESCRIPT;
+use tree_sitter_rust::language as rust_language;
+use tree_sitter_javascript::language as js_language;
+use tree_sitter_python::language as python_language;
+use tree_sitter_go::language as go_language;
+use tree_sitter_typescript::language_typescript;
 
 lazy_static! {
     static ref WEAK_CRYPTO_REGEXES: Vec<Regex> = vec![
@@ -61,32 +61,27 @@ impl AdvancedSecurityAnalyzer {
 
         // Rust parser
         let mut rs_parser = Parser::new();
-        let rust_lang: Language = RUST_LANGUAGE.into();
-        rs_parser.set_language(&rust_lang).unwrap();
+        rs_parser.set_language(rust_language()).unwrap();
         parsers.insert("rs".to_string(), rs_parser);
 
         // JavaScript parser
         let mut js_parser = Parser::new();
-        let js_lang: Language = JS_LANGUAGE.into();
-        js_parser.set_language(&js_lang).unwrap();
+        js_parser.set_language(js_language()).unwrap();
         parsers.insert("js".to_string(), js_parser);
 
         // TypeScript parser (using TypeScript grammar)
         let mut ts_parser = Parser::new();
-        let ts_lang: Language = LANGUAGE_TYPESCRIPT.into();
-        ts_parser.set_language(&ts_lang).unwrap();
+        ts_parser.set_language(language_typescript()).unwrap();
         parsers.insert("ts".to_string(), ts_parser);
 
         // Python parser
         let mut py_parser = Parser::new();
-        let py_lang: Language = PYTHON_LANGUAGE.into();
-        py_parser.set_language(&py_lang).unwrap();
+        py_parser.set_language(python_language()).unwrap();
         parsers.insert("py".to_string(), py_parser);
 
         // Go parser
         let mut go_parser = Parser::new();
-        let go_lang: Language = GO_LANGUAGE.into();
-        go_parser.set_language(&go_lang).unwrap();
+        go_parser.set_language(go_language()).unwrap();
         parsers.insert("go".to_string(), go_parser);
 
         let patterns = Self::load_advanced_patterns();

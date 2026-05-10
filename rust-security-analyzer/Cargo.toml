@@ -8,18 +8,18 @@ name = "security_analyzer"
 crate-type = ["cdylib"]  # Compile as shared library for FFI
 
 [dependencies]
-regex = "1.10"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-rayon = "1.8"
-syn = { version = "2.0", features = ["full", "parsing"] }  # AST parsing for Rust code
-tree-sitter = "0.22"  # Multi-language AST parsing (includes JS/TS via tree-sitter-javascript)
-tree-sitter-rust = "0.24.2"
-tree-sitter-javascript = "0.25"
-tree-sitter-python = "0.25"
-tree-sitter-go = "0.25"
-tree-sitter-typescript = "0.21"
-tokio = { version = "1.0", features = ["full"] }  # Async runtime
-anyhow = "1.0"  # Error handling
+regex = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rayon = "1"
 lazy_static = "1.4"
+anyhow = "1"
+
+# tree-sitter compatibility pinned to 0.20.x
+tree-sitter = "0.20.10"
+tree-sitter-rust = "0.20.4"
+tree-sitter-javascript = "0.20.1"
+tree-sitter-python = "0.20.4"
+tree-sitter-go = "0.20.0"
+tree-sitter-typescript = "0.20.3"
 
