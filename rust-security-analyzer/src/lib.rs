@@ -61,7 +61,7 @@ impl AdvancedSecurityAnalyzer {
 
     fn create_parser(language: Language) -> Parser {
         let mut parser = Parser::new();
-        parser.set_language(&language).unwrap();
+        parser.set_language(language).unwrap();
         parser
     }
 
