@@ -3,12 +3,24 @@ use std::os::raw::c_char;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use regex::Regex;
-use tree_sitter::Parser;
+use tree_sitter::{Parser, Language};
 use rayon::prelude::*;
-use tree_sitter_rust::LANGUAGE as rust_language;
-use tree_sitter_javascript::LANGUAGE as js_language;
-use tree_sitter_python::LANGUAGE as python_language;
-use tree_sitter_go::LANGUAGE as go_language;
+use lazy_static::lazy_static;
+
+use tree_sitter_rust::LANGUAGE as RUST_LANGUAGE;
+use tree_sitter_javascript::LANGUAGE as JS_LANGUAGE;
+use tree_sitter_python::LANGUAGE as PYTHON_LANGUAGE;
+use tree_sitter_go::LANGUAGE as GO_LANGUAGE;
+use tree_sitter_typescript::LANGUAGE_TYPESCRIPT;
+
+lazy_static! {
+    static ref WEAK_CRYPTO_REGEXES: Vec<Regex> = vec![
+        Regex::new(r"MD5|md5").unwrap(),
+        Regex::new(r"SHA1|sha1").unwrap(),
+        Regex::new(r"DES|des").unwrap(),
+        Regex::new(r"RC4|rc4").unwrap(),
+    ];
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AdvancedFinding {
@@ -47,25 +59,34 @@ impl AdvancedSecurityAnalyzer {
     pub fn new() -> Self {
         let mut parsers = HashMap::new();
 
-        // Initialize parsers for different languages
+        // Rust parser
         let mut rs_parser = Parser::new();
-        rs_parser.set_language(&rust_language).unwrap();
+        let rust_lang: Language = RUST_LANGUAGE.into();
+        rs_parser.set_language(&rust_lang).unwrap();
         parsers.insert("rs".to_string(), rs_parser);
 
+        // JavaScript parser
         let mut js_parser = Parser::new();
-        js_parser.set_language(&js_language).unwrap();
+        let js_lang: Language = JS_LANGUAGE.into();
+        js_parser.set_language(&js_lang).unwrap();
         parsers.insert("js".to_string(), js_parser);
 
+        // TypeScript parser (using TypeScript grammar)
         let mut ts_parser = Parser::new();
-        ts_parser.set_language(&js_language).unwrap();
+        let ts_lang: Language = LANGUAGE_TYPESCRIPT.into();
+        ts_parser.set_language(&ts_lang).unwrap();
         parsers.insert("ts".to_string(), ts_parser);
 
+        // Python parser
         let mut py_parser = Parser::new();
-        py_parser.set_language(&python_language).unwrap();
+        let py_lang: Language = PYTHON_LANGUAGE.into();
+        py_parser.set_language(&py_lang).unwrap();
         parsers.insert("py".to_string(), py_parser);
 
+        // Go parser
         let mut go_parser = Parser::new();
-        go_parser.set_language(&go_language).unwrap();
+        let go_lang: Language = GO_LANGUAGE.into();
+        go_parser.set_language(&go_lang).unwrap();
         parsers.insert("go".to_string(), go_parser);
 
         let patterns = Self::load_advanced_patterns();
@@ -123,6 +144,35 @@ impl AdvancedSecurityAnalyzer {
         findings
     }
 
+    fn walk_tree<F>(node: &tree_sitter::Node, findings: &mut Vec<AdvancedFinding>, mut callback: F)
+    where
+        F: FnMut(tree_sitter::Node, &mut Vec<AdvancedFinding>),
+    {
+        let mut cursor = node.walk();
+
+        loop {
+            callback(cursor.node(), findings);
+
+            if cursor.goto_first_child() {
+                continue;
+            }
+
+            if cursor.goto_next_sibling() {
+                continue;
+            }
+
+            loop {
+                if !cursor.goto_parent() {
+                    return;
+                }
+
+                if cursor.goto_next_sibling() {
+                    break;
+                }
+            }
+        }
+    }
+
     fn ast_analysis(parser: &mut Parser, file_path: &str, content: &str, lang: &str) -> Vec<AdvancedFinding> {
         let mut findings = Vec::new();
 
@@ -147,12 +197,7 @@ impl AdvancedSecurityAnalyzer {
     fn analyze_rust_ast(node: &tree_sitter::Node, source: &str, file_path: &str) -> Vec<AdvancedFinding> {
         let mut findings = Vec::new();
 
-        // Walk the AST looking for security issues
-        let mut cursor = node.walk();
-
-        loop {
-            let current_node = cursor.node();
-
+        Self::walk_tree(node, &mut findings, |current_node, findings| {
             // Check for unsafe blocks
             if current_node.kind() == "unsafe_block" {
                 findings.push(AdvancedFinding {
@@ -185,31 +230,15 @@ impl AdvancedSecurityAnalyzer {
                     });
                 }
             }
+        });
 
-            if !cursor.goto_first_child() {
-                if !cursor.goto_next_sibling() {
-                    loop {
-                        cursor.goto_parent();
-                        if !cursor.goto_next_sibling() {
-                            if cursor.node() == *node {
-                                return findings;
-                            }
-                        } else {
-                            break;
-                        }
-                    }
-                }
-            }
-        }
+        findings
     }
 
     fn analyze_js_ast(node: &tree_sitter::Node, source: &str, file_path: &str) -> Vec<AdvancedFinding> {
         let mut findings = Vec::new();
-        let mut cursor = node.walk();
 
-        loop {
-            let current_node = cursor.node();
-
+        Self::walk_tree(node, &mut findings, |current_node, findings| {
             // Check for eval usage
             if current_node.kind() == "call_expression" {
                 let call_text = current_node.utf8_text(source.as_bytes()).unwrap_or("");
@@ -245,31 +274,15 @@ impl AdvancedSecurityAnalyzer {
                     });
                 }
             }
+        });
 
-            if !cursor.goto_first_child() {
-                if !cursor.goto_next_sibling() {
-                    loop {
-                        cursor.goto_parent();
-                        if !cursor.goto_next_sibling() {
-                            if cursor.node() == *node {
-                                return findings;
-                            }
-                        } else {
-                            break;
-                        }
-                    }
-                }
-            }
-        }
+        findings
     }
 
     fn analyze_python_ast(node: &tree_sitter::Node, source: &str, file_path: &str) -> Vec<AdvancedFinding> {
         let mut findings = Vec::new();
-        let mut cursor = node.walk();
 
-        loop {
-            let current_node = cursor.node();
-
+        Self::walk_tree(node, &mut findings, |current_node, findings| {
             // Check for exec/eval usage
             if current_node.kind() == "call" {
                 let call_text = current_node.utf8_text(source.as_bytes()).unwrap_or("");
@@ -287,31 +300,15 @@ impl AdvancedSecurityAnalyzer {
                     });
                 }
             }
+        });
 
-            if !cursor.goto_first_child() {
-                if !cursor.goto_next_sibling() {
-                    loop {
-                        cursor.goto_parent();
-                        if !cursor.goto_next_sibling() {
-                            if cursor.node() == *node {
-                                return findings;
-                            }
-                        } else {
-                            break;
-                        }
-                    }
-                }
-            }
-        }
+        findings
     }
 
     fn analyze_go_ast(node: &tree_sitter::Node, source: &str, file_path: &str) -> Vec<AdvancedFinding> {
         let mut findings = Vec::new();
-        let mut cursor = node.walk();
 
-        loop {
-            let current_node = cursor.node();
-
+        Self::walk_tree(node, &mut findings, |current_node, findings| {
             // Check for SQL injection patterns
             if current_node.kind() == "call_expression" {
                 let call_text = current_node.utf8_text(source.as_bytes()).unwrap_or("");
@@ -332,22 +329,9 @@ impl AdvancedSecurityAnalyzer {
                     }
                 }
             }
+        });
 
-            if !cursor.goto_first_child() {
-                if !cursor.goto_next_sibling() {
-                    loop {
-                        cursor.goto_parent();
-                        if !cursor.goto_next_sibling() {
-                            if cursor.node() == *node {
-                                return findings;
-                            }
-                        } else {
-                            break;
-                        }
-                    }
-                }
-            }
-        }
+        findings
     }
 
     fn pattern_analysis(&self, file_path: &str, content: &str) -> Vec<AdvancedFinding> {
@@ -368,7 +352,7 @@ impl AdvancedSecurityAnalyzer {
                     findings.push(AdvancedFinding {
                         file: file_path.to_string(),
                         line: line_num + 1,
-                        column: mat.start(),
+                        column: mat.start() + 1,
                         finding_type: pattern_name.clone(),
                         severity: severity.to_string(),
                         description: self.get_pattern_description(pattern_name),
@@ -414,32 +398,23 @@ impl AdvancedSecurityAnalyzer {
     fn crypto_analysis(&self, file_path: &str, content: &str) -> Vec<AdvancedFinding> {
         let mut findings = Vec::new();
 
-        // Check for weak cryptographic practices
-        let weak_crypto_patterns = vec![
-            r"MD5|md5",
-            r"SHA1|sha1",
-            r"DES|des",
-            r"RC4|rc4",
-        ];
-
         let lines: Vec<&str> = content.lines().collect();
 
         for (line_num, line) in lines.iter().enumerate() {
-            for pattern in &weak_crypto_patterns {
-                if let Ok(regex) = Regex::new(pattern) {
-                    if regex.is_match(line) {
-                        findings.push(AdvancedFinding {
-                            file: file_path.to_string(),
-                            line: line_num + 1,
-                            column: 0,
-                            finding_type: "weak_crypto".to_string(),
-                            severity: "MEDIUM".to_string(),
-                            description: format!("Use of weak cryptographic algorithm: {}", pattern),
-                            confidence: 0.7,
-                            code_context: line.trim().to_string(),
-                            vulnerability_class: "Cryptography".to_string(),
-                        });
-                    }
+            for regex in WEAK_CRYPTO_REGEXES.iter() {
+                if regex.is_match(line) {
+                    findings.push(AdvancedFinding {
+                        file: file_path.to_string(),
+                        line: line_num + 1,
+                        column: 1,
+                        finding_type: "weak_crypto".to_string(),
+                        severity: "MEDIUM".to_string(),
+                        description: "Use of weak cryptographic algorithm".to_string(),
+                        confidence: 0.7,
+                        code_context: line.trim().to_string(),
+                        vulnerability_class: "Cryptography".to_string(),
+                    });
+                    break; // Only report once per line
                 }
             }
         }
@@ -450,10 +425,13 @@ impl AdvancedSecurityAnalyzer {
     fn extract_context(source: &str, node: &tree_sitter::Node) -> String {
         let start = node.start_byte();
         let end = node.end_byte();
-        let context_start = start.saturating_sub(50);
-        let context_end = (end + 50).min(source.len());
 
-        source[context_start..context_end].to_string()
+        let bytes = source.as_bytes();
+
+        let context_start = start.saturating_sub(50);
+        let context_end = (end + 50).min(bytes.len());
+
+        String::from_utf8_lossy(&bytes[context_start..context_end]).to_string()
     }
 
     fn get_pattern_description(&self, pattern: &str) -> String {
@@ -486,6 +464,11 @@ pub extern "C" fn analyze_file_ffi(
     file_path: *const c_char,
     content: *const c_char,
 ) -> *mut c_char {
+    // Safety checks for null pointers
+    if file_path.is_null() || content.is_null() {
+        return std::ptr::null_mut();
+    }
+
     let file_path_str = unsafe { CStr::from_ptr(file_path).to_str().unwrap_or("") };
     let content_str = unsafe { CStr::from_ptr(content).to_str().unwrap_or("") };
 
@@ -523,6 +506,7 @@ pub async fn analyze_repository_async(repo_path: &str) -> Result<AdvancedScanRes
 
     // Collect all source files
     let files = AdvancedSecurityAnalyzer::collect_source_files(repo_path)?;
+    let total_files = files.len();
 
     // Analyze files in parallel
     let findings: Vec<AdvancedFinding> = files
@@ -539,15 +523,12 @@ pub async fn analyze_repository_async(repo_path: &str) -> Result<AdvancedScanRes
         .collect();
 
     let analysis_time = start_time.elapsed().as_millis() as u64;
-    
-    // Capture findings length before moving
-    let findings_count = findings.len();
 
     Ok(AdvancedScanResult {
         findings,
         language_stats: HashMap::new(), // Would compute from files
         performance_metrics: PerformanceMetrics {
-            files_processed: findings_count,
+            files_processed: total_files,
             total_lines: 0, // Would compute
             analysis_time_ms: analysis_time,
             memory_peak_mb: 0, // Would track
