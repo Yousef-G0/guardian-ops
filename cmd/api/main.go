@@ -47,7 +47,7 @@ type ScanResult struct {
 	PolicyResult PolicyResult    `json:"policy_result"`
 	Summary      string          `json:"summary"`
 }
-
+//Secret finder
 type SecretFinding struct {
 	File       string  `json:"file"`
 	Line       int     `json:"line"`
@@ -56,7 +56,7 @@ type SecretFinding struct {
 	Match      string  `json:"match"`
 	Confidence float64 `json:"confidence"` // 0.0 - 1.0
 }
-
+//CVE finder
 type CVEFinding struct {
 	Package     string `json:"package"`
 	Severity    string `json:"severity"`
@@ -64,7 +64,7 @@ type CVEFinding struct {
 	Description string `json:"description"`
 	CVSS        float64 `json:"cvss"`
 }
-
+//Issue finder
 type CodeIssue struct {
 	File        string `json:"file"`
 	Line        int    `json:"line"`
@@ -72,7 +72,7 @@ type CodeIssue struct {
 	Severity    string `json:"severity"`
 	Description string `json:"description"`
 }
-
+// The result of the policy after it had been obtianed
 type PolicyResult struct {
 	Passed   bool     `json:"passed"`
 	Violations []string `json:"violations"`
