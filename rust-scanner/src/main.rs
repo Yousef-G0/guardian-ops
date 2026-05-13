@@ -23,7 +23,7 @@ pub struct ScanResult {
 pub struct SecretScanner {
     patterns: HashMap<String, Regex>,
 }
-
+//Secrets
 impl SecretScanner {
     pub fn new() -> Self {
         let mut patterns = HashMap::new();
